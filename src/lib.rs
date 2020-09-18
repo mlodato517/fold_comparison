@@ -1,6 +1,16 @@
-pub struct IteratorTester<I> {
+#![feature(test)]
+
+extern crate test;
+
+pub struct IteratorTester<I: Iterator> {
     inner: I,
 }
+impl<I: Iterator> IteratorTester<I> {
+    pub fn new(iter: I) -> Self {
+        IteratorTester { inner: iter }
+    }
+}
+
 impl<I: Iterator> Iterator for IteratorTester<I> {
     type Item = I::Item;
 
@@ -20,6 +30,7 @@ impl<I: Iterator> IteratorTester<I> {
         }
         accum
     }
+
     pub fn fold_mut_fold<T, F>(self, init: T, mut f: F) -> T
     where
         F: FnMut(&mut T, I::Item),
@@ -29,6 +40,7 @@ impl<I: Iterator> IteratorTester<I> {
             accum
         })
     }
+
     pub fn fold_mut_each<T, F>(self, init: T, mut f: F) -> T
     where
         F: FnMut(&mut T, I::Item),
@@ -108,4 +120,99 @@ mod tests {
             6
         )
     }
+}
+
+#[cfg(test)]
+mod benches {
+    use super::*;
+    use test::{black_box, Bencher};
+
+    macro_rules! mut_closure {
+        ($nums:ident, $n:ident) => {
+            if $n % 3 == 0 {
+                let n2 = $n / 3;
+                if n2 % 3 == 0 {
+                    $nums.push(n2);
+                }
+            }
+        };
+    }
+
+    macro_rules! test {
+        ($name_for:ident, $name_fold:ident, $name_fold_mut:ident, $name_fold_mut_fold:ident, $name_fold_mut_each:ident, $iter:expr) => {
+            #[bench]
+            fn $name_for(b: &mut Bencher) {
+                b.iter(|| {
+                    let mut nums = Vec::new();
+                    for n in IteratorTester::new($iter) {
+                        if n % 3 == 0 {
+                            let n2 = n / 3;
+                            if n2 % 3 == 0 {
+                                nums.push(n2);
+                            }
+                        }
+                    }
+                    nums
+                })
+            }
+            #[bench]
+            fn $name_fold(b: &mut Bencher) {
+                b.iter(|| {
+                    IteratorTester::new($iter).fold(Vec::new(), |mut nums, n| {
+                        if n % 3 == 0 {
+                            let n2 = n / 3;
+                            if n2 % 3 == 0 {
+                                nums.push(n2);
+                            }
+                        }
+                        nums
+                    })
+                })
+            }
+            #[bench]
+            fn $name_fold_mut(b: &mut Bencher) {
+                b.iter(|| {
+                    IteratorTester::new($iter).fold_mut(Vec::new(), |nums, n| mut_closure!(nums, n))
+                })
+            }
+            #[bench]
+            fn $name_fold_mut_fold(b: &mut Bencher) {
+                b.iter(|| {
+                    IteratorTester::new($iter)
+                        .fold_mut_fold(Vec::new(), |nums, n| mut_closure!(nums, n))
+                })
+            }
+            #[bench]
+            fn $name_fold_mut_each(b: &mut Bencher) {
+                b.iter(|| {
+                    IteratorTester::new($iter)
+                        .fold_mut_each(Vec::new(), |nums, n| mut_closure!(nums, n))
+                })
+            }
+        };
+    }
+    test!(
+        bench_simple_for,
+        bench_simple_fold,
+        bench_simple_fold_mut,
+        bench_simple_fold_mut_fold,
+        bench_simple_fold_mut_each,
+        (0i64..100_000).map(black_box)
+    );
+    test!(
+        bench_chain_for,
+        bench_chain_fold,
+        bench_chain_fold_mut,
+        bench_chain_fold_mut_fold,
+        bench_chain_fold_mut_each,
+        (0i64..50_000).chain(0..50_000).map(black_box)
+    );
+    test!(
+        bench_flat_for,
+        bench_flat_fold,
+        bench_flat_fold_mut,
+        bench_flat_fold_mut_fold,
+        bench_flat_fold_mut_each,
+        (0i64..100_000).map(std::iter::once).flat_map(black_box)
+    );
 }
