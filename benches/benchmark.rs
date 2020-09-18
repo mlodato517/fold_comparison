@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use fold_mut::*;
+use fold_comparison::*;
 use std::iter::once;
 
 macro_rules! mut_closure {
